@@ -1,0 +1,9 @@
+{
+  "api_key": "YOUR_API_KEY_HERE",
+  "api_base": "https://api.openai.com/v1",
+  "model": "gpt-4o-mini",
+  "editor": "vim",
+  "max_history": 20,
+  "auto_confirm": false,
+  "timeout": 30
+}
