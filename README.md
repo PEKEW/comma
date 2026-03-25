@@ -69,7 +69,7 @@ On branch main...
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourname/comma.git
+git clone https://github.com/PEKEW/comma.git
 cd comma
 ```
 
