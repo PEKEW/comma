@@ -30,6 +30,7 @@ _llm_shell_detect() {
 # 生成命令
 _llm_shell_gen() {
     local desc="$1"
+    local debug_flag="$2"
     _llm_shell_detect
     [[ -z "$LLM_SHELL_BACKEND" ]] && return 1
     
@@ -41,9 +42,17 @@ _llm_shell_gen() {
     if [[ "$LLM_SHELL_BACKEND" == *.py ]]; then
         local pkg_dir
         pkg_dir="$(cd "$(dirname "$LLM_SHELL_BACKEND")/.." && pwd)"
-        (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --generate "$desc") 2>/dev/null
+        if [[ -n "$debug_flag" ]]; then
+            (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --debug --generate "$desc")
+        else
+            (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --generate "$desc") 2>/dev/null
+        fi
     else
-        llm-shell --generate "$desc" 2>/dev/null
+        if [[ -n "$debug_flag" ]]; then
+            llm-shell --debug --generate "$desc"
+        else
+            llm-shell --generate "$desc" 2>/dev/null
+        fi
     fi
 }
 
@@ -110,6 +119,11 @@ _llm_shell_danger() {
 
 # 编辑模式
 ,,() {
+    local debug_flag=""
+    if [[ "$1" == "--debug" ]]; then
+        debug_flag="--debug"
+        shift
+    fi
     local desc="$*"
     
     if [[ -z "$desc" ]]; then
@@ -118,7 +132,7 @@ _llm_shell_danger() {
     fi
     
     echo -e "${DIM}🤔 思考中...${RESET}"
-    local cmd=$(_llm_shell_gen "$desc")
+    local cmd=$(_llm_shell_gen "$desc" "$debug_flag")
     
     if [[ -z "$cmd" ]]; then
         echo -e "${RED}❌ 生成失败${RESET}"
@@ -181,4 +195,3 @@ fuck() {
     echo -e "${GREEN}$ $fixed${RESET}"
     eval "$fixed"
 }
-

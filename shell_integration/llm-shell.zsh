@@ -25,13 +25,23 @@ _llm_shell_backend() {
 _llm_shell_gen() {
     _llm_shell_backend
     [[ -z "$LLM_SHELL_BACKEND" ]] && return 1
-    
+    local desc="$1"
+    local debug_flag="$2"
+
     if [[ "$LLM_SHELL_BACKEND" == *.py ]]; then
         # 必须用 -m 模块方式运行，否则相对导入（from .config import ...）会失败
         local pkg_dir="${LLM_SHELL_BACKEND:A:h:h}"  # main.py -> llm_shell/ -> 项目根目录
-        (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --generate "$1") 2>/dev/null
+        if [[ -n "$debug_flag" ]]; then
+            (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --debug --generate "$desc")
+        else
+            (cd "$pkg_dir" && $LLM_SHELL_PYTHON -m llm_shell.main --generate "$desc") 2>/dev/null
+        fi
     else
-        llm-shell --generate "$1" 2>/dev/null
+        if [[ -n "$debug_flag" ]]; then
+            llm-shell --debug --generate "$desc"
+        else
+            llm-shell --generate "$desc" 2>/dev/null
+        fi
     fi
 }
 
@@ -57,11 +67,16 @@ lsh() {
 
 # 编辑模式
 lsh-edit() {
+    local debug_flag=""
+    if [[ "$1" == "--debug" ]]; then
+        debug_flag="--debug"
+        shift
+    fi
     local desc="$*"
     [[ -z "$desc" ]] && { echo "用法: lsh-edit <描述>"; return 1; }
     
     echo "🤔 思考中..."
-    local cmd=$(_llm_shell_gen "$desc")
+    local cmd=$(_llm_shell_gen "$desc" "$debug_flag")
     [[ -z "$cmd" ]] && { echo "❌ 生成失败"; return 1; }
     
     echo "➜ $cmd"
@@ -112,4 +127,3 @@ fuck() {
 # 如果要用逗号，创建别名
 alias ,='lsh'
 alias ,,='lsh-edit'
-

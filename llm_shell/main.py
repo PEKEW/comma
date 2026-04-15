@@ -23,24 +23,24 @@ from .llm_client import LLMClient
 from .utils import get_shell_type, is_dangerous_command
 
 
-def generate_command(description: str, shell: str = None) -> Optional[str]:
+def generate_command(description: str, shell: str = None, debug: bool = False) -> Optional[str]:
     """生成命令（供shell脚本调用）"""
     if shell is None:
         shell = get_shell_type()
     
     config = Config()
-    llm = LLMClient(config)
+    llm = LLMClient(config, debug=debug)
     
     return llm.natural_to_command(description, shell)
 
 
-def fix_command(command: str, shell: str = None) -> Optional[str]:
+def fix_command(command: str, shell: str = None, debug: bool = False) -> Optional[str]:
     """修复命令（供shell脚本调用）"""
     if shell is None:
         shell = get_shell_type()
     
     config = Config()
-    llm = LLMClient(config)
+    llm = LLMClient(config, debug=debug)
     
     # 模拟执行获取错误
     import subprocess
@@ -241,19 +241,24 @@ def main():
         default=None,
         help='指定shell类型 (bash/zsh)'
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='打印请求/响应调试日志到 stderr'
+    )
     
     args = parser.parse_args()
     
     if args.config:
         setup_config()
     elif args.generate:
-        cmd = generate_command(args.generate, args.shell)
+        cmd = generate_command(args.generate, args.shell, debug=args.debug)
         if cmd:
             print(cmd)
         else:
             sys.exit(1)
     elif args.fix:
-        fixed = fix_command(args.fix, args.shell)
+        fixed = fix_command(args.fix, args.shell, debug=args.debug)
         if fixed:
             print(fixed)
         else:

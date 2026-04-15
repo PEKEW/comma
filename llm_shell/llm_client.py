@@ -3,24 +3,59 @@ import json
 import os
 import sys
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from typing import Optional, List, Dict
 
 
 class LLMClient:
     """LLM API客户端"""
     
-    def __init__(self, config):
+    def __init__(self, config, debug: bool = False):
         self.config = config
         self.api_key = config.get("api_key")
         self.api_base = config.get("api_base", "https://api.openai.com/v1")
         self.model = config.get("model", "gpt-3.5-turbo")
         self.timeout = config.get("timeout", 30)
-    
+        self.debug = debug
+
+    def _debug_log(self, title: str, payload=None) -> None:
+        """输出调试日志到 stderr。"""
+        if not self.debug:
+            return
+        print(f"[llm-shell debug] {title}", file=sys.stderr)
+        if payload is None:
+            return
+        if isinstance(payload, (dict, list)):
+            text = json.dumps(payload, ensure_ascii=False, indent=2)
+        else:
+            text = str(payload)
+        print(text, file=sys.stderr)
+
+    def _redact_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
+        """脱敏敏感请求头。"""
+        redacted = dict(headers)
+        for key in ("Authorization", "x-api-key"):
+            if key in redacted:
+                value = redacted[key]
+                if len(value) > 12:
+                    redacted[key] = f"{value[:8]}...{value[-4:]}"
+                else:
+                    redacted[key] = "***"
+        return redacted
+
     def _is_anthropic_format(self) -> bool:
         """检测是否使用 Anthropic 格式（kimi.com/coding 或 anthropic.com）"""
         base = self.api_base.lower()
         return "kimi.com/coding" in base or "anthropic.com" in base
+
+    def _build_request_url(self, base: str) -> str:
+        """根据 provider 和 api_base 生成正确的请求 URL。"""
+        if self._is_anthropic_format():
+            normalized = base.removesuffix("/")
+            if normalized.endswith("/v1"):
+                return f"{normalized}/messages"
+            return f"{normalized}/v1/messages"
+        return f"{base}/chat/completions"
 
     def chat(self, messages: List[Dict[str, str]], temperature: float = 0.1) -> Optional[str]:
         """
@@ -37,8 +72,8 @@ class LLMClient:
 
         if self._is_anthropic_format():
             # Anthropic 格式: POST /v1/messages, x-api-key header
-            # api_base 应配置为不含 /v1 的根路径（如 https://api.kimi.com/coding）
-            url = f"{base}/v1/messages"
+            # 同时兼容 api_base 配成根路径或已带 /v1 的情况
+            url = self._build_request_url(base)
             data = {
                 "model": self.model,
                 "max_tokens": 500,
@@ -51,7 +86,7 @@ class LLMClient:
             }
         else:
             # OpenAI 格式: POST /chat/completions, Authorization: Bearer header
-            url = f"{base}/chat/completions"
+            url = self._build_request_url(base)
             data = {
                 "model": self.model,
                 "messages": messages,
@@ -64,6 +99,9 @@ class LLMClient:
             }
 
         try:
+            self._debug_log("request url", url)
+            self._debug_log("request headers", self._redact_headers(headers))
+            self._debug_log("request body", data)
             req = Request(
                 url,
                 data=json.dumps(data).encode('utf-8'),
@@ -72,19 +110,32 @@ class LLMClient:
             )
 
             with urlopen(req, timeout=self.timeout) as response:
-                result = json.loads(response.read().decode('utf-8'))
+                status = getattr(response, "status", None)
+                raw_body = response.read().decode('utf-8')
+                self._debug_log("response status", status)
+                self._debug_log("response body", raw_body)
+                result = json.loads(raw_body)
                 if self._is_anthropic_format():
                     return result['content'][0]['text'].strip()
                 else:
                     return result['choices'][0]['message']['content'].strip()
 
+        except HTTPError as e:
+            raw_body = e.read().decode('utf-8', errors='replace')
+            self._debug_log("http error", {"code": e.code, "reason": str(e.reason)})
+            self._debug_log("http error body", raw_body)
+            print(f"\033[91mAPI请求失败: HTTP {e.code} {e.reason}\033[0m", file=sys.stderr)
+            return None
         except URLError as e:
+            self._debug_log("url error", repr(e))
             print(f"\033[91mAPI请求失败: {e}\033[0m", file=sys.stderr)
             return None
         except json.JSONDecodeError as e:
+            self._debug_log("json decode error", repr(e))
             print(f"\033[91m解析响应失败: {e}\033[0m", file=sys.stderr)
             return None
         except Exception as e:
+            self._debug_log("unexpected error", repr(e))
             print(f"\033[91m错误: {e}\033[0m", file=sys.stderr)
             return None
     
